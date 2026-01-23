@@ -25,5 +25,4 @@ build-setuptools
 # others
 .claude/*
 docs/*
-!docs/plans
 .vol

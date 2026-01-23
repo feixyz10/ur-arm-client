@@ -1,4 +1,4 @@
-"""Tests for additional state properties (jcurrent, xvel, xforce, is_moving)."""
+"""Tests for additional state properties (jcurrent, jtemp, xvel, xforce, is_moving)."""
 
 import sys
 import pytest
@@ -29,6 +29,26 @@ def test_jcurrent_returns_joint_currents():
 
         assert result == expected_currents
         mock_recv_instance.getActualCurrent.assert_called_once()
+
+
+def test_jtemp_returns_joint_temperatures():
+    """Test that jtemp returns actual joint temperatures."""
+    with (
+        patch("pyurrr._driver.RTDEController") as mock_ctrl,
+        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
+    ):
+        mock_recv_instance = Mock()
+        expected_temps = [45.2, 50.1, 48.3, 42.5, 41.2, 40.8]
+        mock_recv_instance.getJointTemperatures.return_value = expected_temps
+        mock_recv.return_value = mock_recv_instance
+
+        driver = URDriver(ip="192.168.1.10", lazy=True)
+        driver.connect()
+
+        result = driver.jtemp
+
+        assert result == expected_temps
+        mock_recv_instance.getJointTemperatures.assert_called_once()
 
 
 def test_xvel_returns_tcp_velocity():
@@ -139,3 +159,11 @@ def test_is_moving_requires_connection():
 
     with pytest.raises(ConnectionError, match="Not connected to robot"):
         _ = driver.is_moving
+
+
+def test_jtemp_requires_connection():
+    """Test that jtemp raises ConnectionError when not connected."""
+    driver = URDriver(ip="192.168.1.10", lazy=True)
+
+    with pytest.raises(ConnectionError, match="Not connected to robot"):
+        _ = driver.jtemp

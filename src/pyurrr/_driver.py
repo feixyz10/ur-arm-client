@@ -1,5 +1,6 @@
 """UR robot driver implementation."""
 
+import time
 from rtde_control import RTDEControlInterface as RTDEController
 from rtde_receive import RTDEReceiveInterface as RTDEReceiver
 from typing import List, Optional
@@ -18,20 +19,20 @@ class URDriver:
         read_only: If True, only connect receiver (no control)
         lazy: If True, don't connect until first use or with block
         frequency: RTDE receive frequency in Hz
-        home_pose: Initial home position for go_home() (None = zero position)
+        home_pose: Initial home position for go_home() (None = [0, -1.57, 1.57, 0, 0, 0])
     """
 
     def __init__(
         self,
         ip: str,
-        read_only: bool = False,
         lazy: bool = True,
+        read_only: bool = False,
         frequency: int = 125,
         home_pose: Optional[List[float]] = None,
     ):
         self.ip = ip
-        self.read_only = read_only
         self.lazy = lazy
+        self.read_only = read_only
         self.frequency = frequency
         self.home_pose = home_pose
 
@@ -78,6 +79,13 @@ class URDriver:
         return self._receiver.getActualCurrent()
 
     @property
+    def jtemp(self) -> List[float]:
+        """Get current joint temperatures."""
+        if not self._connected or self._receiver is None:
+            raise ConnectionError("Not connected to robot")
+        return self._receiver.getJointTemperatures()
+
+    @property
     def xvel(self) -> List[float]:
         """Get current TCP velocity."""
         if not self._connected or self._receiver is None:
@@ -97,7 +105,7 @@ class URDriver:
         if not self._connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
         velocities = self.jvel
-        return any(abs(v) > 0.001 for v in velocities)
+        return any(abs(v) > 0.0001 for v in velocities)
 
     def fk(self, jpos: List[float]) -> List[float]:
         """Forward kinematics: joint positions -> TCP pose."""
@@ -105,25 +113,11 @@ class URDriver:
             raise ConnectionError("Not connected to robot")
         return self._controller.getForwardKinematics(jpos)
 
-    def ik(
-        self, pose: List[float], jpos_hint: Optional[List[float]] = None
-    ) -> List[float]:
-        """Inverse kinematics: TCP pose -> joint positions."""
-        if not self._connected or self._controller is None:
-            raise ConnectionError("Not connected to robot")
-
-        has_solution = self._controller.getInverseKinematicsHasSolution(pose, jpos_hint)
-
-        if not has_solution:
-            raise IKError(f"Inverse kinematics has no solution for pose: {pose}")
-
-        return self._controller.getInverseKinematics(pose, jpos_hint)
-
     def movej(
         self,
         target: List[float],
-        velocity: float = 1.05,
-        acceleration: float = 1.4,
+        velocity: float = 0.25,
+        acceleration: float = 1.0,
         blocking: bool = True,
     ):
         if self.read_only:
@@ -133,7 +127,7 @@ class URDriver:
         if len(target) != 6:
             raise OperationError(f"movej requires 6 joint positions, got {len(target)}")
 
-        success = self._controller.moveJ(target, velocity, acceleration, blocking)
+        success = self._controller.moveJ(target, velocity, acceleration, not blocking)
 
         if not success:
             raise OperationError("movej failed")
@@ -152,7 +146,7 @@ class URDriver:
         self,
         target: List[float],
         velocity: float = 0.25,
-        acceleration: float = 1.2,
+        acceleration: float = 1.0,
         blocking: bool = True,
     ):
         if self.read_only:
@@ -162,7 +156,7 @@ class URDriver:
         if len(target) != 6:
             raise OperationError(f"movel requires 6 pose values, got {len(target)}")
 
-        success = self._controller.moveL(target, velocity, acceleration, blocking)
+        success = self._controller.moveL(target, velocity, acceleration, not blocking)
 
         if not success:
             raise OperationError("movel failed")
@@ -223,13 +217,17 @@ class URDriver:
         self.home_pose = pose
 
     def go_home(
-        self, velocity: float = 1.05, acceleration: float = 1.4
+        self,
+        velocity: float = 0.25,
+        acceleration: float = 1.0,
+        blocking: bool = True,
     ) -> Optional[MotionToken]:
         """Move robot to home position.
 
         Args:
             velocity: Joint velocity (rad/s)
             acceleration: Joint acceleration (rad/s²)
+            blocking: Whether to wait for motion to complete
 
         Returns:
             None if blocking=True (default), MotionToken if blocking=False
@@ -237,16 +235,18 @@ class URDriver:
         Raises:
             ConnectionError: If not connected to robot
         """
-        home = self.home_pose if self.home_pose is not None else [0, 0, 0, 0, 0, 0]
+        home = (
+            self.home_pose if self.home_pose is not None else [0, -1.57, 1.57, 0, 0, 0]
+        )
         return self.movej(
-            home, velocity=velocity, acceleration=acceleration, blocking=True
+            home, velocity=velocity, acceleration=acceleration, blocking=blocking
         )
 
     def movej_relative(
         self,
         delta: List[float],
-        velocity: float = 1.05,
-        acceleration: float = 1.4,
+        velocity: float = 0.25,
+        acceleration: float = 1.0,
         blocking: bool = True,
     ):
         """Move joints relative to current position.
@@ -271,7 +271,7 @@ class URDriver:
         self,
         delta: List[float],
         velocity: float = 0.25,
-        acceleration: float = 1.2,
+        acceleration: float = 1.0,
         blocking: bool = True,
     ):
         """Move TCP relative to current pose.
@@ -296,18 +296,18 @@ class URDriver:
         self,
         waypoints: List[List[float]],
         path_type: str = "j",
+        velocity: float = 0.25,
+        acceleration: float = 1.0,
         blend_radius: float = 0.0,
-        velocity: float = 1.05,
-        acceleration: float = 1.4,
     ) -> Optional[MotionToken]:
         """Execute a path through multiple waypoints.
 
         Args:
             waypoints: List of target positions (each is 6 values)
             path_type: 'j' for joint space, 'l' for Cartesian space
-            blend_radius: Blend radius between waypoints (meters)
             velocity: Motion velocity (rad/s or m/s depending on path_type)
             acceleration: Motion acceleration (rad/s² or m/s²)
+            blend_radius: Blend radius between waypoints (meters)
 
         Returns:
             None (path movements are always blocking)
@@ -325,13 +325,11 @@ class URDriver:
             raise ConnectionError("Not connected to robot")
 
         if path_type == "l":
-            velocity = velocity if velocity != 1.05 else 0.25
-            acceleration = acceleration if acceleration != 1.4 else 1.2
             move_fn = self._controller.moveL
         else:
             move_fn = self._controller.moveJ
 
-        success = move_fn(waypoints, velocity, acceleration, True)
+        success = move_fn(waypoints, velocity, acceleration, False)
         if not success:
             raise OperationError(f"move_path failed (path_type={path_type})")
         return None
@@ -361,6 +359,49 @@ class URDriver:
         if not self._connected or self._controller is None:
             raise ConnectionError("Not connected to robot")
         self._controller.stopL(acceleration)
+
+    def wait_done(self, token: MotionToken, timeout: float = 60.0) -> None:
+        """Wait for a specific movement to complete.
+
+        Args:
+            token: MotionToken from a non-blocking movement
+            timeout: Maximum time to wait in seconds (default: 60)
+
+        Raises:
+            ConnectionError: If not connected to robot
+            TimeoutError: If movement doesn't complete within timeout
+        """
+        if not self._connected or self._receiver is None:
+            raise ConnectionError("Not connected to robot")
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if not self.is_moving:
+                return
+            time.sleep(0.01)
+
+        raise TimeoutError(f"Movement did not complete within {timeout} seconds")
+
+    def wait_all_done(self, timeout: float = 60.0) -> None:
+        """Wait for all queued movements to complete.
+
+        Args:
+            timeout: Maximum time to wait in seconds (default: 60)
+
+        Raises:
+            ConnectionError: If not connected to robot
+            TimeoutError: If movements don't complete within timeout
+        """
+        if not self._connected or self._receiver is None:
+            raise ConnectionError("Not connected to robot")
+
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if not self.is_moving:
+                return
+            time.sleep(0.01)
+
+        raise TimeoutError(f"Movements did not complete within {timeout} seconds")
 
     def __enter__(self):
         """Enter context manager and connect if not already connected.

@@ -9,6 +9,7 @@ Easy-to-use Python wrapper around [ur_rtde](https://gitlab.com/sdurobotics/ur_rt
 - **Simple API** - Single `URDriver` class for all robot operations
 - **Context Manager Support** - Automatic connection management with `with` statement
 - **Blocking & Non-Blocking Moves** - Start movements and optionally wait for completion
+- **Token-Based Waiting** - `wait_done()` and `wait_all_done()` for movement synchronization
 - **Convenience Methods** - Path following, relative movements, home position
 - **Read-Only Mode** - Monitor robot state without controlling it
 - **Type Hints** - Full type annotations for better IDE support
@@ -68,14 +69,16 @@ from pyurrr import URDriver
 
 with URDriver("192.168.1.10") as robot:
     # Start movement without waiting
-    robot.movej([0, -1.57, 1.57, 0, 0, 0], blocking=False)
+    token = robot.movej([0, -1.57, 1.57, 0, 0, 0], blocking=False)
 
     # Do other work while robot moves
     print("Robot is moving...")
 
-    # Wait for movement to complete
-    while robot.is_moving:
-        print(f"Current joints: {robot.jpos}")
+    # Wait for this specific movement to complete
+    robot.wait_done(token)
+
+    # Or wait for all movements to complete
+    robot.wait_all_done()
 ```
 
 ### Path Following
@@ -136,11 +139,6 @@ with URDriver("192.168.1.10") as robot:
     jpos = [0, -1.57, 1.57, 0, 0, 0]
     pose = robot.fk(jpos)
     print(f"TCP pose: {pose}")
-
-    # Inverse kinematics: pose -> joints
-    target_pose = [0.3, 0.2, 0.4, 0, 3.14, 0]
-    jpos = robot.ik(target_pose)
-    robot.movej(jpos)
 ```
 
 ### Read-Only Monitoring
@@ -183,6 +181,7 @@ with URDriver("192.168.1.10") as robot:
     robot.jpos      # Joint positions [6x]
     robot.jvel      # Joint velocities [6x]
     robot.jcurrent  # Joint currents [6x]
+    robot.jtemp     # Joint temperatures [6x]
 
     # Cartesian state
     robot.xpose     # TCP pose [x,y,z,rx,ry,rz]
@@ -221,12 +220,20 @@ URDriver(
 | `stopj(acceleration)` | Stop in joint space |
 | `stopl(acceleration)` | Stop in Cartesian space |
 
+### Wait Methods
+
+| Method | Description |
+|--------|-------------|
+| `wait_done(token, timeout)` | Wait for specific movement to complete |
+| `wait_all_done(timeout)` | Wait for all movements to complete |
+
+**Timeout:** Both methods raise `TimeoutError` if movement doesn't complete within the timeout period (default: 60 seconds).
+
 ### Kinematics
 
 | Method | Description |
 |--------|-------------|
 | `fk(jpos)` | Forward kinematics (joints → pose) |
-| `ik(pose, hint)` | Inverse kinematics (pose → joints) |
 
 ### Connection
 
@@ -250,14 +257,18 @@ from pyurrr import URDriver, ConnectionError, OperationError, IKError
 
 try:
     with URDriver("192.168.1.10") as robot:
-        robot.ik([999, 999, 999, 0, 0, 0])  # Unreachable pose
-except IKError as e:
-    print(f"No IK solution: {e}")
+        robot.movej([0, -1.57, 1.57, 0, 0, 0])
 except ConnectionError as e:
     print(f"Connection failed: {e}")
 except OperationError as e:
     print(f"Operation failed: {e}")
+except TimeoutError as e:
+    print(f"Movement timed out: {e}")
 ```
+
+## TODO
+
+- [ ] add support for IK.
 
 ## License
 

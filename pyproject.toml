@@ -7,7 +7,7 @@ name = "pyurrr"
 version = "0.1.0"
 description = "Easy-to-use UR robot driver package wrapping ur_rtde"
 readme = "README.md"
-requires-python = ">=3.9,<=3.12"
+requires-python = ">=3.9,<3.13"
 dependencies = [
     "tyro>=1.0.5",
     "ur-rtde; sys_platform == 'darwin'",

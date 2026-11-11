@@ -1,192 +1,129 @@
-"""Tests for token-based wait methods (wait_done, wait_all_done)."""
+"""Asynchronous commands are tracked by RTDE status, independent of velocity."""
 
-import sys
+from unittest.mock import Mock, patch
+
 import pytest
-import time
-from unittest.mock import Mock, patch, MagicMock
+from rtde_control import AsyncOperationStatus
 
-# Mock the ur_rtde modules before importing pyurrr
-sys.modules["rtde_control"] = MagicMock()
-sys.modules["rtde_receive"] = MagicMock()
+from ur_arm_client import ConnectionError, OperationError, URArmClient
 
-from pyurrr import URDriver, ConnectionError, MotionToken
+TARGET = [0.0] * 6
 
 
-def test_wait_done_returns_when_not_moving():
-    """Test that wait_done returns immediately when robot is not moving."""
+def status(operation_id, running=False):
+    return AsyncOperationStatus((operation_id << 24) | (0x8000 if running else 0))
+
+
+@pytest.fixture
+def client_and_controller():
+    controller = Mock()
+    controller.moveJ.return_value = True
+    controller.moveL.return_value = True
     with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._driver.RTDEController", return_value=controller),
+        patch("ur_arm_client._driver.RTDEReceiver"),
+        URArmClient("robot") as client,
     ):
-        mock_recv_instance = Mock()
-        # Robot is stationary
-        mock_recv_instance.getActualQd.return_value = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        mock_recv.return_value = mock_recv_instance
-
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
-
-        token = MotionToken(
-            movement_type="j",
-            target=[0, 0, 0, 0, 0, 0],
-            velocity=1.0,
-            acceleration=1.0,
-            blocking=False,
-        )
-
-        # Should return immediately
-        driver.wait_done(token)
+        yield client, controller
 
 
-def test_wait_done_waits_for_motion_to_complete():
-    """Test that wait_done waits until robot stops moving."""
-    with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
-    ):
-        mock_recv_instance = Mock()
-        mock_recv.return_value = mock_recv_instance
+def test_wait_for_start_then_finish(client_and_controller):
+    client, controller = client_and_controller
+    progress = controller.getAsyncOperationProgressEx
+    progress.side_effect = [status(5), status(5), status(6, True), status(6)]
 
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
+    token = client.movej(TARGET, blocking=False)
+    client.wait_done(token)
 
-        token = MotionToken(
-            movement_type="j",
-            target=[0, 0, 0, 0, 0, 0],
-            velocity=1.0,
-            acceleration=1.0,
-            blocking=False,
-        )
-
-        # Simulate motion stopping after 2 checks
-        call_count = [0]
-
-        def mock_get_velocity():
-            call_count[0] += 1
-            if call_count[0] < 3:
-                return [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
-            return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-        mock_recv_instance.getActualQd.side_effect = mock_get_velocity
-
-        driver.wait_done(token)
-
-        # Should have checked velocity at least a few times
-        assert call_count[0] >= 3
+    assert progress.call_count == 4
+    client.wait_done(token, timeout=0)
+    assert progress.call_count == 4
 
 
-def test_wait_done_timeout():
-    """Test that wait_done raises TimeoutError when motion doesn't complete."""
-    with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
-    ):
-        mock_recv_instance = Mock()
-        # Robot never stops moving
-        mock_recv_instance.getActualQd.return_value = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
-        mock_recv.return_value = mock_recv_instance
+def test_fast_move_can_finish_before_first_poll_and_wrap_counter(client_and_controller):
+    client, controller = client_and_controller
+    controller.getAsyncOperationProgressEx.side_effect = [status(127), status(0)]
+    client.movel(TARGET, blocking=False)
 
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
-
-        token = MotionToken(
-            movement_type="j",
-            target=[0, 0, 0, 0, 0, 0],
-            velocity=1.0,
-            acceleration=1.0,
-            blocking=False,
-        )
-
-        # Should timeout after short duration
-        with pytest.raises(TimeoutError, match="did not complete"):
-            driver.wait_done(token, timeout=0.1)
+    client.wait_all_done(timeout=0)
 
 
-def test_wait_all_done_returns_when_not_moving():
-    """Test that wait_all_done returns immediately when robot is not moving."""
-    with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
-    ):
-        mock_recv_instance = Mock()
-        # Robot is stationary
-        mock_recv_instance.getActualQd.return_value = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        mock_recv.return_value = mock_recv_instance
+def test_timeout_does_not_discard_pending_move(client_and_controller):
+    client, controller = client_and_controller
+    controller.getAsyncOperationProgressEx.side_effect = [
+        status(10),
+        status(10),
+        status(11),
+    ]
+    token = client.movej(TARGET, blocking=False)
 
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
+    with pytest.raises(TimeoutError, match="did not complete"):
+        client.wait_done(token, timeout=0)
 
-        # Should return immediately
-        driver.wait_all_done()
+    client.wait_done(token, timeout=0)
 
 
-def test_wait_all_done_waits_for_motion_to_complete():
-    """Test that wait_all_done waits until robot stops moving."""
-    with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
-    ):
-        mock_recv_instance = Mock()
-        mock_recv.return_value = mock_recv_instance
+def test_new_move_cannot_replace_pending_move(client_and_controller):
+    client, controller = client_and_controller
+    controller.getAsyncOperationProgressEx.side_effect = [
+        status(1),
+        status(2, True),
+        status(2),
+    ]
+    token = client.movej(TARGET, blocking=False)
 
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
+    with pytest.raises(OperationError, match="already pending"):
+        client.movel(TARGET)
 
-        # Simulate motion stopping after 2 checks
-        call_count = [0]
-
-        def mock_get_velocity():
-            call_count[0] += 1
-            if call_count[0] < 3:
-                return [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
-            return [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-
-        mock_recv_instance.getActualQd.side_effect = mock_get_velocity
-
-        driver.wait_all_done()
-
-        # Should have checked velocity at least a few times
-        assert call_count[0] >= 3
+    controller.moveL.assert_not_called()
+    client.wait_done(token)
 
 
-def test_wait_all_done_timeout():
-    """Test that wait_all_done raises TimeoutError when motion doesn't complete."""
-    with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
-    ):
-        mock_recv_instance = Mock()
-        # Robot never stops moving
-        mock_recv_instance.getActualQd.return_value = [0.1, 0.0, 0.0, 0.0, 0.0, 0.0]
-        mock_recv.return_value = mock_recv_instance
+def test_different_controller_operation_does_not_complete_token(client_and_controller):
+    client, controller = client_and_controller
+    controller.getAsyncOperationProgressEx.side_effect = [status(10), status(12)]
 
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
+    token = client.movej(TARGET, blocking=False)
 
-        # Should timeout after short duration
-        with pytest.raises(TimeoutError, match="did not complete"):
-            driver.wait_all_done(timeout=0.1)
+    with pytest.raises(OperationError, match="different operation"):
+        client.wait_done(token)
 
 
-def test_wait_done_requires_connection():
-    """Test that wait_done raises ConnectionError when not connected."""
-    driver = URDriver(ip="192.168.1.10", lazy=True)
+def test_stopping_motion_invalidates_its_token(client_and_controller):
+    client, controller = client_and_controller
+    controller.getAsyncOperationProgressEx.return_value = status(7)
+    token = client.movej(TARGET, blocking=False)
 
-    token = MotionToken(
-        movement_type="j",
-        target=[0, 0, 0, 0, 0, 0],
-        velocity=1.0,
-        acceleration=1.0,
-        blocking=False,
-    )
+    client.stopj()
 
-    with pytest.raises(ConnectionError, match="Not connected to robot"):
-        driver.wait_done(token)
+    with pytest.raises(OperationError, match="interrupted"):
+        client.wait_done(token)
 
 
-def test_wait_all_done_requires_connection():
-    """Test that wait_all_done raises ConnectionError when not connected."""
-    driver = URDriver(ip="192.168.1.10", lazy=True)
+def test_tokens_do_not_cross_sessions(client_and_controller):
+    client, controller = client_and_controller
+    controller.getAsyncOperationProgressEx.return_value = status(3)
+    token = client.movej(TARGET, blocking=False)
 
-    with pytest.raises(ConnectionError, match="Not connected to robot"):
-        driver.wait_all_done()
+    with URArmClient("other robot") as other:
+        with pytest.raises(OperationError, match="does not belong"):
+            other.wait_done(token)
+
+    client.disconnect()
+    client.connect()
+    with pytest.raises(OperationError, match="does not belong"):
+        client.wait_done(token)
+
+
+def test_wait_all_done_is_noop_without_pending_move(client_and_controller):
+    client, controller = client_and_controller
+    client.wait_all_done()
+    controller.getAsyncOperationProgressEx.assert_not_called()
+
+
+def test_wait_requires_connection():
+    client = URArmClient("robot")
+    with pytest.raises(ConnectionError, match="Not connected"):
+        client.wait_done(None)
+    with pytest.raises(ConnectionError, match="Not connected"):
+        client.wait_all_done()

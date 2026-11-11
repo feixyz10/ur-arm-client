@@ -1,87 +1,74 @@
-"""Tests for path movement (move_path)."""
+"""Test the native RTDE waypoint format and validation."""
 
-import sys
+from unittest.mock import patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from rtde_control import Path
 
-# Mock the ur_rtde modules before importing pyurrr
-sys.modules["rtde_control"] = MagicMock()
-sys.modules["rtde_receive"] = MagicMock()
-
-from pyurrr import URDriver, ConnectionError, OperationError
+from ur_arm_client import OperationError, URArmClient
 
 
-def test_move_path_with_joint_space_waypoints():
-    """Test that move_path executes joint space path with type 'j'."""
+@pytest.mark.parametrize("kind", ["j", "l"])
+def test_path_sends_velocity_acceleration_and_intermediate_blend(kind):
     with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._driver.RTDEController") as control,
+        patch("ur_arm_client._driver.RTDEReceiver"),
+        URArmClient("robot") as client,
     ):
-        mock_ctrl_instance = Mock()
-        mock_ctrl_instance.moveJ.return_value = True
-        mock_ctrl.return_value = mock_ctrl_instance
+        move = getattr(control.return_value, f"move{kind.upper()}")
+        points = [[0.1, 0, 0, 0, 0, 0], [0.2, 0, 0, 0, 0, 0]]
 
-        mock_recv_instance = Mock()
-        mock_recv.return_value = mock_recv_instance
+        assert client.move_path(points, kind, 0.25, 1.0, 0.01) is None
 
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
-
-        waypoints = [
-            [0.0, -1.0, 1.0, 0.0, 0.0, 0.0],
-            [0.1, -0.9, 1.0, 0.0, 0.0, 0.0],
-            [0.2, -0.8, 1.0, 0.0, 0.0, 0.0],
-        ]
-
-        result = driver.move_path(
-            waypoints, path_type="j", velocity=0.8, acceleration=1.0
+        assert points == [[0.1, 0, 0, 0, 0, 0], [0.2, 0, 0, 0, 0, 0]]
+        move.assert_called_once()
+        path, asynchronous = move.call_args.args
+        assert asynchronous is False
+        native_path = Path()
+        append_path = (
+            native_path.appendMovejPath if kind == "j" else native_path.appendMovelPath
         )
-
-        assert result is None
-        mock_ctrl_instance.moveJ.assert_called_once_with(waypoints, 0.8, 1.0, True)
-
-
-def test_move_path_with_cartesian_space_waypoints():
-    """Test that move_path executes Cartesian path with type 'l'."""
-    with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
-    ):
-        mock_ctrl_instance = Mock()
-        mock_ctrl_instance.moveL.return_value = True
-        mock_ctrl.return_value = mock_ctrl_instance
-
-        mock_recv_instance = Mock()
-        mock_recv.return_value = mock_recv_instance
-
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
-
-        waypoints = [
-            [0.3, 0.2, 0.5, 0.0, 0.0, 0.0],
-            [0.35, 0.25, 0.55, 0.0, 0.0, 0.0],
+        append_path(path)
+        commands = [
+            line
+            for line in native_path.toScriptCode().splitlines()
+            if f"move{kind}(" in line
         ]
-
-        result = driver.move_path(waypoints, path_type="l")
-
-        assert result is None
-        # Should use default linear velocity/acceleration
-        mock_ctrl_instance.moveL.assert_called_once_with(waypoints, 0.25, 1.2, True)
+        assert len(commands) == 2
+        assert "a=1,v=0.25,r=0.01" in commands[0]
+        assert commands[1].endswith("a=1,v=0.25,r=0)")
 
 
-def test_move_path_validates_path_type():
-    """Test that move_path raises ValueError for invalid path_type."""
+@pytest.mark.parametrize(
+    "waypoints, options",
+    [
+        ([[0] * 6], {"path_type": "x"}),
+        ([], {}),
+        ([[0] * 5], {}),
+        ([[0] * 5 + [float("inf")]], {}),
+        ([[0] * 6], {"velocity": 0}),
+        ([[0] * 6], {"acceleration": float("nan")}),
+        ([[0] * 6], {"blend_radius": -1}),
+    ],
+)
+def test_invalid_paths_do_not_send_motion(waypoints, options):
     with (
-        patch("pyurrr._driver.RTDEController") as mock_ctrl,
-        patch("pyurrr._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._driver.RTDEController") as control,
+        patch("ur_arm_client._driver.RTDEReceiver"),
+        URArmClient("robot") as client,
     ):
-        mock_recv_instance = Mock()
-        mock_recv.return_value = mock_recv_instance
+        with pytest.raises(ValueError):
+            client.move_path(waypoints, **options)
+        control.return_value.moveJ.assert_not_called()
+        control.return_value.moveL.assert_not_called()
 
-        driver = URDriver(ip="192.168.1.10", lazy=True)
-        driver.connect()
 
-        waypoints = [[0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
-
-        with pytest.raises(ValueError, match="path_type must be 'j' or 'l', got 'x'"):
-            driver.move_path(waypoints, path_type="x")
+def test_path_reports_rejected_command():
+    with (
+        patch("ur_arm_client._driver.RTDEController") as control,
+        patch("ur_arm_client._driver.RTDEReceiver"),
+        URArmClient("robot") as client,
+    ):
+        control.return_value.moveJ.return_value = False
+        with pytest.raises(OperationError, match="move_path failed"):
+            client.move_path([[0] * 6])

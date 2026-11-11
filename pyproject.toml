@@ -3,23 +3,15 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pyurrr"
-version = "0.1.1"
-description = "Easy-to-use UR robot driver package wrapping ur_rtde"
-readme = "README.md"
-requires-python = ">=3.9,<3.13"
-dependencies = [
-    "tyro>=1.0.5",
-    "ur-rtde; sys_platform == 'darwin'",
-    "ur-rtde>=1.6.2; sys_platform != 'darwin'",
-]
-
-[tool.uv.sources]
-"ur-rtde" = [
-    { git = "git+https://gitee.com/i-my-fork/ur_rtde.git", marker = "sys_platform == 'darwin'" },
-]
+name = "ur-arm-client"
+version = "0.1.0"
+description = "Python client for Universal Robots arms over RTDE"
+readme = "USER_GUIDE.md"
+requires-python = ">=3.10"
+dependencies = ["ur-rtde-py>=1.6.5"]
 
 [dependency-groups]
-dev = [
-    "pytest>=8.4.2",
-]
+dev = ["pytest>=8.4.2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

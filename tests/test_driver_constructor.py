@@ -1,10 +1,10 @@
-import pytest
-from pyurrr import URDriver
+from unittest.mock import patch
+from ur_arm_client import URArmClient
 
 
 def test_constructor_with_required_params():
-    """Test URDriver constructor with required parameters."""
-    driver = URDriver(ip="192.168.1.10")
+    """Test URArmClient constructor with required parameters."""
+    driver = URArmClient(ip="192.168.1.10")
 
     assert driver.ip == "192.168.1.10"
     assert driver.read_only is False
@@ -12,9 +12,10 @@ def test_constructor_with_required_params():
     assert driver.frequency == 125
 
 
-def test_constructor_with_all_params():
-    """Test URDriver constructor with all parameters."""
-    driver = URDriver(
+@patch("ur_arm_client._driver.RTDEReceiver")
+def test_constructor_with_all_params(receiver):
+    """Test URArmClient constructor with all parameters."""
+    driver = URArmClient(
         ip="192.168.1.10",
         read_only=True,
         lazy=False,
@@ -24,21 +25,23 @@ def test_constructor_with_all_params():
 
     assert driver.ip == "192.168.1.10"
     assert driver.read_only is True
+    receiver.assert_called_once_with("192.168.1.10", frequency=250)
+    assert driver.is_connected
     assert driver.lazy is False
     assert driver.frequency == 250
     assert driver.home_pose == [0, -1.57, 1.57, 0, 0, 0]
 
 
 def test_constructor_default_home_pose():
-    """Test that home_pose defaults to None (zero position)."""
-    driver = URDriver(ip="192.168.1.10")
+    """Test that home_pose defaults to None."""
+    driver = URArmClient(ip="192.168.1.10")
 
     assert driver.home_pose is None
 
 
 def test_constructor_lazy_by_default():
     """Test that lazy connection is enabled by default."""
-    driver = URDriver(ip="192.168.1.10")
+    driver = URArmClient(ip="192.168.1.10")
 
     assert driver.lazy is True
     assert driver.is_connected is False  # Should not connect immediately
@@ -47,6 +50,6 @@ def test_constructor_lazy_by_default():
 def test_constructor_lazy_does_not_connect():
     """Test that lazy mode does not connect immediately."""
     # Note: Connection will be mocked in integration tests
-    driver = URDriver(ip="192.168.1.10", lazy=True)
+    driver = URArmClient(ip="192.168.1.10", lazy=True)
 
     assert driver.is_connected is False

@@ -1,8 +1,8 @@
-"""Custom exceptions for pyurrr package."""
+"""Custom exceptions for ur_arm_client package."""
 
 
 class URRDError(Exception):
-    """Base exception for all pyurrr errors."""
+    """Base exception for all ur_arm_client errors."""
 
     pass
 

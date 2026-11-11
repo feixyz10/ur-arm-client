@@ -1,42 +1,21 @@
 #!/usr/bin/env python3
-"""Quick test script for pyurrr with a real UR robot.
+"""Read joint and TCP state from a real robot without issuing commands."""
 
-This is a simple sanity check to verify basic connectivity and movement.
-"""
+from argparse import ArgumentParser
 
-from pyurrr import URDriver
-
-# Configuration
-ROBOT_IP = "192.168.1.10"  # Change this to your robot's IP
+from ur_arm_client import URArmClient
 
 
-def main():
-    print(f"Testing connection to robot at {ROBOT_IP}...")
+def main() -> None:
+    parser = ArgumentParser(description=__doc__)
+    parser.add_argument("ip", help="Robot controller IP address")
+    args = parser.parse_args()
 
-    with URDriver(ROBOT_IP, home_pose=None) as robot:
-        # Check connection
-        print("✓ Connected")
-        print(f"  Joint positions: {robot.jpos}")
-        print(f"  TCP pose: {robot.xpose}")
-        print(f"  Joint temperatures: {robot.jtemp}")
-
-        # Simple movement test
-        print("\nTesting movement...")
-
-        print("✓ Returned to home")
-        robot.go_home()
-
-        print("✓ Moved to test position")
-        robot.movej_relative([0, -0.15, 0.15, 0, 0, 0])
-
-        print("\nAll tests passed!")
+    with URArmClient(args.ip, read_only=True) as arm:
+        print(f"Joint positions (rad): {arm.jpos}")
+        print(f"TCP pose (m, rad): {arm.xpose}")
+        print(f"Joint temperatures (°C): {arm.jtemp}")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-
-        traceback.print_exc()
+    main()

@@ -1,5 +1,5 @@
 import pytest
-from pyurrr import URRDError, ConnectionError, OperationError, IKError
+from ur_arm_client import URRDError, ConnectionError, OperationError, IKError
 
 
 def test_exception_hierarchy():

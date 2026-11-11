@@ -1,62 +1,21 @@
 # Examples
 
-Example scripts for testing pyurrr with a real UR robot.
+See the [User Guide](../USER_GUIDE.md) for the library API and controller setup. Run these commands from the repository root after `uv sync`.
 
-## Quick Start
+## Read-only connection check
 
-**Quick Test** - `quick_test.py`
-- Basic connectivity test
-- Simple movement test
-- Fast sanity check (5-10 seconds)
-- Use this first to verify everything works
+Replace the example address with your robot controller's IP. This script opens only the receive connection and prints joint positions, the tool pose, and joint temperatures.
 
 ```bash
-# Edit the script to set your robot IP
-vim quick_test.py
-
-# Run the quick test
-python quick_test.py
+uv run python examples/quick_test.py 192.168.1.10
 ```
 
-## Comprehensive Test
+## Manual motion check
 
-**Full Test** - `test_real_robot.py`
-- Tests all commonly-used features
-- Connection, movement, kinematics, monitoring
-- Takes 1-2 minutes to complete
-- Comprehensive verification
+`test_real_robot.py` opens a control connection, makes a non-blocking joint move, waits for it to finish, and returns to a configured home position. It prints the configured targets and asks you to confirm before connecting. Run `--help` for the arguments:
 
 ```bash
-# Edit the script to set your robot IP
-vim test_real_robot.py
-
-# Run the full test
-python test_real_robot.py
+uv run python examples/test_real_robot.py --help
 ```
 
-## Before Running
-
-1. Make sure the robot is powered on
-2. Put robot in remote control mode
-3. Ensure no emergency stop is active
-4. Clear the workspace around the robot
-5. Know your robot's IP address
-
-## Safety
-
-- These scripts move the robot at safe speeds
-- Emergency stop is tested (will stop the robot)
-- Keep hand near emergency stop button
-- Always supervise robot movement
-
-## Features Tested
-
-The comprehensive test covers:
-1. ✓ Connection and state queries
-2. ✓ Joint space movement
-3. ✓ Non-blocking movement with wait_done
-4. ✓ Relative movements
-5. ✓ Forward/inverse kinematics
-6. ✓ State monitoring during motion
-7. ✓ Home position feature
-8. ✓ Emergency stop
+Supply two sets of six joint angles in radians and choose a velocity and acceleration that are appropriate for your setup. Verify the entire travel path from the arm's current pose before confirming. This script is separate from the offline test suite.

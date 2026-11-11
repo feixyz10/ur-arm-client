@@ -3,14 +3,14 @@
 import pytest
 from unittest.mock import Mock, patch
 
-from ur_arm_client import URArmClient, ConnectionError
+from ur_arm_client import ConnectionError, JCurr, JTemp, Twist, URArmClient, Wrench
 
 
 def test_jcurrent_returns_joint_currents():
     """Test that jcurrent returns actual joint currents."""
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
         expected_currents = [1.2, -0.8, 0.5, 0.3, -0.2, 0.1]
@@ -20,17 +20,17 @@ def test_jcurrent_returns_joint_currents():
         driver = URArmClient(ip="192.168.1.10", lazy=True)
         driver.connect()
 
-        result = driver.jcurrent
+        result = driver.joint_currents
 
-        assert result == expected_currents
+        assert result == JCurr(*expected_currents)
         mock_recv_instance.getActualCurrent.assert_called_once()
 
 
 def test_jtemp_returns_joint_temperatures():
     """Test that jtemp returns actual joint temperatures."""
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
         expected_temps = [45.2, 50.1, 48.3, 42.5, 41.2, 40.8]
@@ -40,57 +40,59 @@ def test_jtemp_returns_joint_temperatures():
         driver = URArmClient(ip="192.168.1.10", lazy=True)
         driver.connect()
 
-        result = driver.jtemp
+        result = driver.joint_temperatures
 
-        assert result == expected_temps
+        assert result == JTemp(*expected_temps)
         mock_recv_instance.getJointTemperatures.assert_called_once()
 
 
 def test_xvel_returns_tcp_velocity():
     """Test that xvel returns actual TCP velocity."""
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
-        expected_velocity = [0.01, 0.02, -0.01, 0.0, 0.0, 0.0]
+        expected_velocity = [0.01, 0.02, -0.01, 0.04, 0.05, -0.06]
         mock_recv_instance.getActualTCPSpeed.return_value = expected_velocity
         mock_recv.return_value = mock_recv_instance
 
         driver = URArmClient(ip="192.168.1.10", lazy=True)
         driver.connect()
 
-        result = driver.xvel
+        result = driver.tcp_velocity
 
-        assert result == expected_velocity
+        assert result == Twist(
+            tuple(expected_velocity[:3]), tuple(expected_velocity[3:])
+        )
         mock_recv_instance.getActualTCPSpeed.assert_called_once()
 
 
-def test_xforce_returns_tcp_force():
-    """Test that xforce returns actual TCP force."""
+def test_tcp_wrench_preserves_rtde_components_without_transforming():
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
         expected_force = [10.5, -5.2, 20.1, 0.5, -0.3, 0.1]
         mock_recv_instance.getActualTCPForce.return_value = expected_force
         mock_recv.return_value = mock_recv_instance
 
-        driver = URArmClient(ip="192.168.1.10", lazy=True)
+        driver = URArmClient(ip="192.168.1.10", read_only=True)
         driver.connect()
 
-        result = driver.xforce
+        result = driver.tcp_wrench
 
-        assert result == expected_force
+        assert result == Wrench(tuple(expected_force[:3]), tuple(expected_force[3:]))
         mock_recv_instance.getActualTCPForce.assert_called_once()
+        mock_recv_instance.getActualTCPPose.assert_not_called()
 
 
 def test_is_moving_detects_motion():
     """Test that is_moving returns True when joints are moving."""
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
         # Joint velocities indicating motion
@@ -108,8 +110,8 @@ def test_is_moving_detects_motion():
 def test_is_moving_detects_stationary():
     """Test that is_moving returns False when joints are stationary."""
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
         # Joint velocities all near zero
@@ -129,7 +131,7 @@ def test_jcurrent_requires_connection():
     driver = URArmClient(ip="192.168.1.10", lazy=True)
 
     with pytest.raises(ConnectionError, match="Not connected to robot"):
-        _ = driver.jcurrent
+        _ = driver.joint_currents
 
 
 def test_xvel_requires_connection():
@@ -137,7 +139,7 @@ def test_xvel_requires_connection():
     driver = URArmClient(ip="192.168.1.10", lazy=True)
 
     with pytest.raises(ConnectionError, match="Not connected to robot"):
-        _ = driver.xvel
+        _ = driver.tcp_velocity
 
 
 def test_xforce_requires_connection():
@@ -145,7 +147,7 @@ def test_xforce_requires_connection():
     driver = URArmClient(ip="192.168.1.10", lazy=True)
 
     with pytest.raises(ConnectionError, match="Not connected to robot"):
-        _ = driver.xforce
+        _ = driver.tcp_wrench
 
 
 def test_is_moving_requires_connection():
@@ -161,4 +163,4 @@ def test_jtemp_requires_connection():
     driver = URArmClient(ip="192.168.1.10", lazy=True)
 
     with pytest.raises(ConnectionError, match="Not connected to robot"):
-        _ = driver.jtemp
+        _ = driver.joint_temperatures

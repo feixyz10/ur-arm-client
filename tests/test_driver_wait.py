@@ -20,8 +20,8 @@ def client_and_controller():
     controller.moveJ.return_value = True
     controller.moveL.return_value = True
     with (
-        patch("ur_arm_client._driver.RTDEController", return_value=controller),
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController", return_value=controller),
+        patch("ur_arm_client._client.RTDEReceiver"),
         URArmClient("robot") as client,
     ):
         yield client, controller

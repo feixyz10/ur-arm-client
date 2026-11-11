@@ -12,9 +12,9 @@ def main() -> None:
     args = parser.parse_args()
 
     with URArmClient(args.ip, read_only=True) as arm:
-        print(f"Joint positions (rad): {arm.jpos}")
-        print(f"TCP pose (m, rad): {arm.xpose}")
-        print(f"Joint temperatures (°C): {arm.jtemp}")
+        print(f"Joint positions (rad): {arm.joint_positions}")
+        print(f"TCP pose (m, rad): {arm.tcp_pose}")
+        print(f"Joint temperatures (°C): {arm.joint_temperatures}")
 
 
 if __name__ == "__main__":

@@ -7,8 +7,8 @@ from ur_arm_client import URArmClient, ConnectionError
 def test_connect_lazy_mode():
     """Test that lazy mode doesn't connect until connect() is called."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         driver = URArmClient(ip="192.168.1.10", lazy=True)
 
@@ -20,8 +20,8 @@ def test_connect_lazy_mode():
 def test_connect_explicit():
     """Test explicit connect() call."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.isConnected.return_value = True
@@ -42,8 +42,8 @@ def test_connect_explicit():
 def test_connect_read_only_mode():
     """Test that read_only mode only connects receiver."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
         mock_recv_instance.isConnected.return_value = True
@@ -60,8 +60,8 @@ def test_connect_read_only_mode():
 def test_disconnect():
     """Test disconnect stops script and closes connections."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.isConnected.return_value = True
@@ -86,8 +86,8 @@ def test_disconnect():
 def test_connect_when_already_connected():
     """Test that connecting when already connected doesn't create new connections."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.isConnected.return_value = True
@@ -108,7 +108,7 @@ def test_connect_when_already_connected():
 
 def test_connection_failure():
     """Test that connection failures raise ConnectionError."""
-    with patch("ur_arm_client._driver.RTDEController") as mock_ctrl:
+    with patch("ur_arm_client._client.RTDEController") as mock_ctrl:
         mock_ctrl.side_effect = Exception("Connection refused")
 
         driver = URArmClient(ip="192.168.1.10", lazy=True)
@@ -119,8 +119,8 @@ def test_connection_failure():
 
 def test_failed_receiver_rolls_back_control_and_allows_retry():
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver") as receive,
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver") as receive,
     ):
         first_control = Mock()
         control.side_effect = [first_control, Mock()]
@@ -141,8 +141,8 @@ def test_failed_receiver_rolls_back_control_and_allows_retry():
 
 def test_receiver_reporting_disconnected_is_closed():
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver") as receive,
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver") as receive,
     ):
         receive.return_value.isConnected.return_value = False
         client = URArmClient("robot")
@@ -157,8 +157,8 @@ def test_receiver_reporting_disconnected_is_closed():
 
 def test_disconnect_closes_both_connections_even_if_stop_script_fails():
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver") as receive,
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver") as receive,
     ):
         control.return_value.stopScript.side_effect = RuntimeError("stop failed")
         client = URArmClient("robot")
@@ -175,8 +175,8 @@ def test_disconnect_closes_both_connections_even_if_stop_script_fails():
 
 def test_connection_status_reflects_transport_loss():
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver"),
     ):
         client = URArmClient("robot")
         client.connect()
@@ -191,8 +191,8 @@ def test_connection_status_reflects_transport_loss():
 
 def test_cleanup_failure_does_not_mask_error_in_with_block():
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver") as receive,
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver") as receive,
     ):
         control.return_value.stopScript.side_effect = RuntimeError("stop failed")
         with pytest.raises(ValueError, match="original failure"):

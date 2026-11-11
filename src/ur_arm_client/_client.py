@@ -2,14 +2,16 @@
 
 import math
 import time
+from collections.abc import Sequence
 from types import TracebackType
-from typing import List, Optional
 
 from rtde_control import RTDEControlInterface as RTDEController
 from rtde_receive import RTDEReceiveInterface as RTDEReceiver
 
 from ur_arm_client._exceptions import ConnectionError, OperationError
+from ur_arm_client._firmware import _read_firmware
 from ur_arm_client._token import _MotionToken
+from ur_arm_client._values import JCurr, JPos, JTemp, JVec, JVel, Pose, Twist, Wrench
 
 
 class URArmClient:
@@ -31,7 +33,7 @@ class URArmClient:
         lazy: bool = True,
         read_only: bool = False,
         frequency: int = 125,
-        home_pose: Optional[List[float]] = None,
+        home_pose: Sequence[float] | None = None,
     ) -> None:
         self.ip = ip
         self.lazy = lazy
@@ -42,6 +44,8 @@ class URArmClient:
         # Internal state
         self._controller: RTDEController | None = None
         self._receiver: RTDEReceiver | None = None
+        self._connected_ip: str | None = None
+        self._firmware_version: tuple[int, int, int, int] | None = None
         self._session = object()
         self._pending: _MotionToken | None = None
 
@@ -51,7 +55,7 @@ class URArmClient:
 
     @property
     def is_connected(self) -> bool:
-        """Check if driver is connected to robot."""
+        """Check whether the client is connected to the robot."""
         return (
             self._receiver is not None
             and self._receiver.isConnected()
@@ -62,65 +66,148 @@ class URArmClient:
         )
 
     @property
-    def jpos(self) -> List[float]:
+    def joint_positions(self) -> JPos:
         """Get current joint positions."""
         if not self.is_connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
-        return self._receiver.getActualQ()
+        return JPos.from_sequence(self._receiver.getActualQ())
 
     @property
-    def jvel(self) -> List[float]:
+    def joint_velocities(self) -> JVel:
         """Get current joint velocities."""
         if not self.is_connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
-        return self._receiver.getActualQd()
+        return JVel.from_sequence(self._receiver.getActualQd())
 
     @property
-    def xpose(self) -> List[float]:
+    def tcp_pose(self) -> Pose:
         """Get current TCP pose."""
         if not self.is_connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
-        return self._receiver.getActualTCPPose()
+        return Pose.from_sequence(self._receiver.getActualTCPPose())
 
     @property
-    def jcurrent(self) -> List[float]:
+    def joint_currents(self) -> JCurr:
         """Get current joint currents."""
         if not self.is_connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
-        return self._receiver.getActualCurrent()
+        return JCurr.from_sequence(self._receiver.getActualCurrent())
 
     @property
-    def jtemp(self) -> List[float]:
+    def joint_temperatures(self) -> JTemp:
         """Get current joint temperatures."""
         if not self.is_connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
-        return self._receiver.getJointTemperatures()
+        return JTemp.from_sequence(self._receiver.getJointTemperatures())
 
     @property
-    def xvel(self) -> List[float]:
+    def tcp_velocity(self) -> Twist:
         """Get current TCP velocity."""
         if not self.is_connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
-        return self._receiver.getActualTCPSpeed()
+        return Twist.from_sequence(self._receiver.getActualTCPSpeed())
 
     @property
-    def xforce(self) -> List[float]:
-        """Get current TCP force."""
+    def tcp_wrench(self) -> Wrench:
+        """Return payload-compensated RTDE `actual_TCP_force` unchanged.
+
+        Components use robot-base axes, not tool-local axes. The controller
+        determines the moment reference point (normally the tool flange on
+        e-Series and the TCP on CB3); the client does not shift it.
+        """
         if not self.is_connected or self._receiver is None:
             raise ConnectionError("Not connected to robot")
-        return self._receiver.getActualTCPForce()
+        return Wrench.from_sequence(self._receiver.getActualTCPForce())
 
     @property
     def is_moving(self) -> bool:
         """Check if robot is currently moving."""
-        return any(abs(v) > 0.0001 for v in self.jvel)
+        return any(abs(v) > 0.0001 for v in self.joint_velocities)
 
-    def fk(self, jpos: List[float]) -> List[float]:
-        """Forward kinematics: joint positions -> TCP pose."""
+    def fk(self, jpos: Sequence[float]) -> Pose:
+        """Return the TCP pose for a JPos value or six joint angles."""
         controller = self._require_control("compute forward kinematics")
+        self._validate_target_kind("j", jpos)
         if len(jpos) != 6 or not all(math.isfinite(value) for value in jpos):
             raise OperationError("fk requires 6 finite joint positions")
-        return controller.getForwardKinematics(jpos)
+        return Pose.from_sequence(controller.getForwardKinematics(list(jpos)))
+
+    def ik_check(
+        self, pose: Sequence[float], *, qnear: Sequence[float] | None = None
+    ) -> bool:
+        """Check for a kinematic solution without moving the robot.
+
+        Accepts a Pose or six TCP pose values. The optional qnear is a
+        JPos value or six reference joint angles.
+        """
+        controller = self._require_control("check inverse kinematics")
+        target, reference = self._ik_arguments(pose, qnear)
+        return self._check_ik_solution(controller, target, reference)
+
+    def ik(
+        self, pose: Sequence[float], *, qnear: Sequence[float] | None = None
+    ) -> JPos | None:
+        """Solve for a joint configuration without moving the robot.
+
+        Accepts a Pose or six TCP pose values. qnear selects the solution
+        nearest a JPos value or six reference joint angles. If
+        omitted, the controller uses the current joint configuration.
+        Returns None only when the controller confirms no solution.
+        """
+        controller = self._require_control("compute inverse kinematics")
+        target, reference = self._ik_arguments(pose, qnear)
+        joints = controller.getInverseKinematics(target, reference)
+        if len(joints) == 6 and all(math.isfinite(value) for value in joints):
+            return JPos.from_sequence(joints)
+        if joints:
+            raise OperationError("Controller returned invalid inverse kinematics data")
+
+        # The native solver also returns an empty vector on command failure.
+        if not self.is_connected:
+            raise ConnectionError("Connection lost while computing inverse kinematics")
+        if not controller.isProgramRunning():
+            raise OperationError(
+                "RTDE control script stopped during inverse kinematics; "
+                "no solution could be confirmed"
+            )
+        if self._check_ik_solution(controller, target, reference):
+            raise OperationError(
+                "Inverse kinematics failed despite a solution existing"
+            )
+        return None
+
+    def _check_ik_solution(
+        self, controller: RTDEController, target: list[float], reference: list[float]
+    ) -> bool:
+        if self._firmware_version is None:
+            if self._connected_ip is None:
+                raise ConnectionError("Not connected to robot")
+            self._firmware_version = _read_firmware(self._connected_ip)
+        major, minor, bugfix, _ = self._firmware_version
+        # Match the $5.10|3.15 gate in the ur-rtde control script.
+        if (major, minor) < (5, 10) and not (major == 3 and minor >= 15):
+            raise OperationError(
+                f"IK solution checks are not supported on controller firmware "
+                f"{major}.{minor}.{bugfix}; requires PolyScope 3.15+ on CB3 "
+                "or 5.10+ on later controllers"
+            )
+        return controller.getInverseKinematicsHasSolution(target, reference)
+
+    @classmethod
+    def _ik_arguments(
+        cls, pose: Sequence[float], qnear: Sequence[float] | None
+    ) -> tuple[list[float], list[float]]:
+        cls._validate_target_kind("l", pose)
+        target = list(pose)
+        if len(target) != 6 or not all(math.isfinite(value) for value in target):
+            raise OperationError("IK pose requires 6 finite pose values")
+        if qnear is None:
+            return target, []
+        cls._validate_target_kind("j", qnear)
+        reference = list(qnear)
+        if len(reference) != 6 or not all(math.isfinite(value) for value in reference):
+            raise OperationError("IK qnear requires 6 finite joint positions")
+        return target, reference
 
     def _require_control(self, action: str = "move") -> RTDEController:
         if self.read_only:
@@ -154,15 +241,25 @@ class URArmClient:
                     "A motion is already pending; wait for it or stop it first"
                 )
 
+    @staticmethod
+    def _validate_target_kind(kind: str, target: Sequence[float]) -> None:
+        if isinstance(target, (JVec, Pose, Twist, Wrench)):
+            expected = JPos if kind == "j" else Pose
+            if not isinstance(target, expected):
+                raise OperationError(
+                    f"Expected {expected.__name__}, got {type(target).__name__}"
+                )
+
     def _move(
         self,
         kind: str,
-        target: List[float],
+        target: Sequence[float],
         velocity: float,
         acceleration: float,
         blocking: bool,
     ) -> _MotionToken | None:
         controller = self._require_control()
+        self._validate_target_kind(kind, target)
         label = "joint positions" if kind == "j" else "pose values"
         if len(target) != 6:
             raise OperationError(f"move{kind} requires 6 {label}, got {len(target)}")
@@ -186,14 +283,14 @@ class URArmClient:
             baseline = status.operationId()
             # RTDE advances its seven-bit operation counter when a new move starts.
             token = _MotionToken(self._session, baseline, (baseline + 1) % 128)
-        if not move(target, velocity, acceleration, not blocking):
+        if not move(list(target), velocity, acceleration, not blocking):
             raise OperationError(f"move{kind} failed")
         self._pending = token
         return token
 
     def movej(
         self,
-        target: List[float],
+        target: Sequence[float],
         velocity: float = 0.25,
         acceleration: float = 1.0,
         blocking: bool = True,
@@ -203,7 +300,7 @@ class URArmClient:
 
     def movel(
         self,
-        target: List[float],
+        target: Sequence[float],
         velocity: float = 0.25,
         acceleration: float = 1.0,
         blocking: bool = True,
@@ -236,14 +333,15 @@ class URArmClient:
         if self._controller is not None or self._receiver is not None:
             self.disconnect()
 
+        host = self.ip
         controller: RTDEController | None = None
         receiver: RTDEReceiver | None = None
         try:
             if not self.read_only:
-                controller = RTDEController(self.ip)
+                controller = RTDEController(host)
                 if not controller.isConnected():
                     raise ConnectionError("RTDE control did not connect")
-            receiver = RTDEReceiver(self.ip, frequency=self.frequency)
+            receiver = RTDEReceiver(host, frequency=self.frequency)
             if not receiver.isConnected():
                 raise ConnectionError("RTDE receiver did not connect")
         except Exception as error:
@@ -252,14 +350,17 @@ class URArmClient:
                 f"; cleanup also failed: {cleanup_errors[0]}" if cleanup_errors else ""
             )
             raise ConnectionError(
-                f"Failed to connect to robot at {self.ip}: {error}{detail}"
+                f"Failed to connect to robot at {host}: {error}{detail}"
             ) from error
         self._controller, self._receiver = controller, receiver
+        self._connected_ip = host
 
     def disconnect(self) -> None:
         """Stop the control script and attempt to close both RTDE connections."""
         controller, receiver = self._controller, self._receiver
         self._controller, self._receiver = None, None
+        self._connected_ip = None
+        self._firmware_version = None
         self._invalidate_motion("The robot was disconnected")
         self._session = object()
         errors = self._close_interfaces(controller, receiver)
@@ -269,7 +370,7 @@ class URArmClient:
                 f"Failed to disconnect from robot: {details}"
             ) from errors[0]
 
-    def set_home(self, pose: Optional[List[float]]) -> None:
+    def set_home(self, pose: Sequence[float] | None) -> None:
         """Set the home position for go_home().
 
         Args:
@@ -305,7 +406,7 @@ class URArmClient:
 
     def movej_relative(
         self,
-        delta: List[float],
+        delta: Sequence[float],
         velocity: float = 0.25,
         acceleration: float = 1.0,
         blocking: bool = True,
@@ -327,13 +428,13 @@ class URArmClient:
         self._require_control()
         self._validate_delta(delta)
         self._require_idle()
-        current = self.jpos
+        current = self.joint_positions
         target = [c + d for c, d in zip(current, delta, strict=True)]
         return self.movej(target, velocity, acceleration, blocking)
 
     def movel_relative(
         self,
-        delta: List[float],
+        delta: Sequence[float],
         velocity: float = 0.25,
         acceleration: float = 1.0,
         blocking: bool = True,
@@ -355,17 +456,21 @@ class URArmClient:
         controller = self._require_control()
         self._validate_delta(delta)
         self._require_idle()
-        target = controller.poseTrans(self.xpose, delta)
+        target = controller.poseTrans(list(self.tcp_pose), list(delta))
         return self.movel(target, velocity, acceleration, blocking)
 
     @staticmethod
-    def _validate_delta(delta: List[float]) -> None:
+    def _validate_delta(delta: Sequence[float]) -> None:
+        if isinstance(delta, (JVec, Pose, Twist, Wrench)):
+            raise OperationError(
+                "Relative motion requires a sequence of offsets, not a telemetry value"
+            )
         if len(delta) != 6 or not all(math.isfinite(value) for value in delta):
             raise OperationError("Relative motion requires 6 finite delta values")
 
     def move_path(
         self,
-        waypoints: List[List[float]],
+        waypoints: Sequence[Sequence[float]],
         path_type: str = "j",
         velocity: float = 0.25,
         acceleration: float = 1.0,
@@ -379,7 +484,9 @@ class URArmClient:
         if path_type not in ("j", "l"):
             raise ValueError(f"path_type must be 'j' or 'l', got '{path_type}'")
         controller = self._require_control()
-        if not waypoints or any(
+        for point in waypoints:
+            self._validate_target_kind(path_type, point)
+        if len(waypoints) == 0 or any(
             len(point) != 6 or not all(math.isfinite(value) for value in point)
             for point in waypoints
         ):

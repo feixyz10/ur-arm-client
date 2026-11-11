@@ -12,7 +12,7 @@ def test_constructor_with_required_params():
     assert driver.frequency == 125
 
 
-@patch("ur_arm_client._driver.RTDEReceiver")
+@patch("ur_arm_client._client.RTDEReceiver")
 def test_constructor_with_all_params(receiver):
     """Test URArmClient constructor with all parameters."""
     driver = URArmClient(

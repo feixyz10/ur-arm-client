@@ -9,8 +9,8 @@ from ur_arm_client import OperationError, URArmClient
 def test_movej_relative_adds_delta_to_current_joint_positions():
     """Test that movej_relative adds delta to current joint positions."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = True
@@ -36,8 +36,8 @@ def test_movej_relative_adds_delta_to_current_joint_positions():
 
 def test_movel_relative_composes_offset_in_tool_frame():
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
         URArmClient("robot") as client,
     ):
         controller = mock_ctrl.return_value
@@ -56,8 +56,8 @@ def test_movel_relative_composes_offset_in_tool_frame():
 @pytest.mark.parametrize("method", ["movej_relative", "movel_relative"])
 def test_relative_delta_must_have_six_finite_values(method):
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver"),
         URArmClient("robot") as client,
     ):
         for delta in ([0] * 5, [0] * 7, [0] * 5 + [float("nan")]):
@@ -70,8 +70,8 @@ def test_relative_delta_must_have_six_finite_values(method):
 def test_movej_relative_uses_default_parameters():
     """Test that movej_relative uses default velocity and acceleration."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = True

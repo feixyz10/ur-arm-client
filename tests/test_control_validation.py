@@ -10,8 +10,8 @@ from ur_arm_client import OperationError, URArmClient
 @pytest.fixture
 def client_and_control():
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver"),
         URArmClient("robot") as client,
     ):
         yield client, control.return_value
@@ -53,8 +53,8 @@ def test_rejects_invalid_stop_deceleration(client_and_control, method, native):
 def test_control_only_methods_report_read_only_mode(method):
     args = ([0.0] * 6,) if method == "fk" else ()
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver"),
         URArmClient("robot", read_only=True) as client,
     ):
         with pytest.raises(OperationError, match="read-only mode"):

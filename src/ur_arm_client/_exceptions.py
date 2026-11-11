@@ -20,6 +20,6 @@ class OperationError(URRDError):
 
 
 class IKError(OperationError):
-    """Exception raised when inverse kinematics has no solution."""
+    """Reserved inverse kinematics error; confirmed no solution returns None."""
 
     pass

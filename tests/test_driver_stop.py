@@ -9,8 +9,8 @@ from ur_arm_client import URArmClient, ConnectionError
 def test_stopj_stops_joint_motion_with_default_acceleration():
     """Test that stopj stops joint motion with default acceleration."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl.return_value = mock_ctrl_instance
@@ -29,8 +29,8 @@ def test_stopj_stops_joint_motion_with_default_acceleration():
 def test_stopj_stops_joint_motion_with_custom_acceleration():
     """Test that stopj stops joint motion with custom acceleration."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl.return_value = mock_ctrl_instance
@@ -49,8 +49,8 @@ def test_stopj_stops_joint_motion_with_custom_acceleration():
 def test_stopl_stops_linear_motion_with_default_acceleration():
     """Test that stopl stops linear motion with default acceleration."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl.return_value = mock_ctrl_instance
@@ -69,8 +69,8 @@ def test_stopl_stops_linear_motion_with_default_acceleration():
 def test_stopl_stops_linear_motion_with_custom_acceleration():
     """Test that stopl stops linear motion with custom acceleration."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl.return_value = mock_ctrl_instance

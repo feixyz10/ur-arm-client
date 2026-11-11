@@ -37,7 +37,7 @@ def main() -> None:
             blocking=False,
         )
         arm.wait_done(token)
-        print(f"Joint position after operation: {arm.jpos}")
+        print(f"Joint position after operation: {arm.joint_positions}")
         arm.go_home(velocity=args.velocity, acceleration=args.acceleration)
 
 

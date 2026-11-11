@@ -24,8 +24,8 @@ def test_set_home_with_none():
 def test_go_home_with_custom_pose():
     """Test that go_home uses custom home pose when set."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = True
@@ -49,8 +49,8 @@ def test_go_home_with_custom_pose():
 def test_go_home_uses_default_pose():
     """Test that go_home uses the default pose when no home is set."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = True

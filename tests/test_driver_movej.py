@@ -9,8 +9,8 @@ from ur_arm_client import URArmClient, ConnectionError, OperationError
 def test_movej_blocking_returns_none():
     """Test that blocking movej returns None on success."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = True
@@ -33,8 +33,8 @@ def test_movej_blocking_returns_none():
 def test_movej_non_blocking_returns_token():
     """Test that non-blocking movej returns a motion token."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = True
@@ -60,8 +60,8 @@ def test_movej_non_blocking_returns_token():
 def test_movej_custom_parameters():
     """Test movej with custom velocity and acceleration."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = True
@@ -83,8 +83,8 @@ def test_movej_custom_parameters():
 def test_movej_requires_6_joint_positions():
     """Test that movej raises error for incorrect number of joints."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl.return_value = mock_ctrl_instance
@@ -109,8 +109,8 @@ def test_movej_requires_6_joint_positions():
 def test_movej_requires_connection():
     """Test that movej raises ConnectionError when not connected."""
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver"),
     ):
         driver = URArmClient(ip="192.168.1.10", lazy=True)
 
@@ -121,8 +121,8 @@ def test_movej_requires_connection():
 def test_movej_raises_on_failure():
     """Test that movej raises OperationError when controller fails."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.moveJ.return_value = False
@@ -141,8 +141,8 @@ def test_movej_raises_on_failure():
 def test_movej_raises_in_read_only_mode():
     """Test that movej raises error in read-only mode."""
     with (
-        patch("ur_arm_client._driver.RTDEController"),
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController"),
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_recv_instance = Mock()
         mock_recv.return_value = mock_recv_instance

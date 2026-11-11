@@ -11,8 +11,8 @@ from ur_arm_client import OperationError, URArmClient
 @pytest.mark.parametrize("kind", ["j", "l"])
 def test_path_sends_velocity_acceleration_and_intermediate_blend(kind):
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver"),
         URArmClient("robot") as client,
     ):
         move = getattr(control.return_value, f"move{kind.upper()}")
@@ -53,8 +53,8 @@ def test_path_sends_velocity_acceleration_and_intermediate_blend(kind):
 )
 def test_invalid_paths_do_not_send_motion(waypoints, options):
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver"),
         URArmClient("robot") as client,
     ):
         with pytest.raises(ValueError):
@@ -65,8 +65,8 @@ def test_invalid_paths_do_not_send_motion(waypoints, options):
 
 def test_path_reports_rejected_command():
     with (
-        patch("ur_arm_client._driver.RTDEController") as control,
-        patch("ur_arm_client._driver.RTDEReceiver"),
+        patch("ur_arm_client._client.RTDEController") as control,
+        patch("ur_arm_client._client.RTDEReceiver"),
         URArmClient("robot") as client,
     ):
         control.return_value.moveJ.return_value = False

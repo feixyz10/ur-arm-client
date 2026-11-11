@@ -7,8 +7,8 @@ from ur_arm_client import URArmClient
 def test_context_manager_connects_on_enter():
     """Test that entering context manager connects to robot."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.isConnected.return_value = True
@@ -26,8 +26,8 @@ def test_context_manager_connects_on_enter():
 def test_context_manager_disconnects_on_exit():
     """Test that exiting context manager disconnects from robot."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.isConnected.return_value = True
@@ -49,8 +49,8 @@ def test_context_manager_disconnects_on_exit():
 def test_context_manager_disconnects_on_exception():
     """Test that context manager disconnects even if exception occurs."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.isConnected.return_value = True
@@ -72,8 +72,8 @@ def test_context_manager_disconnects_on_exception():
 def test_context_manager_returns_self():
     """Test that context manager __enter__ returns self."""
     with (
-        patch("ur_arm_client._driver.RTDEController") as mock_ctrl,
-        patch("ur_arm_client._driver.RTDEReceiver") as mock_recv,
+        patch("ur_arm_client._client.RTDEController") as mock_ctrl,
+        patch("ur_arm_client._client.RTDEReceiver") as mock_recv,
     ):
         mock_ctrl_instance = Mock()
         mock_ctrl_instance.isConnected.return_value = True

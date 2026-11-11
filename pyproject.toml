@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ur-arm-client"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python client for Universal Robots arms over RTDE"
 readme = "USER_GUIDE.md"
 requires-python = ">=3.10"
